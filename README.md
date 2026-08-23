@@ -61,7 +61,7 @@ To remove the development link:
 For a future published Git repository, users will install with:
 
 ```bash
-omarchy plugin add https://github.com/OWNER/omarchy-sidra.git --enable
+omarchy plugin add https://github.com/Neqael1/omarchy-sidra.git --enable
 ```
 
 ## Requirements
