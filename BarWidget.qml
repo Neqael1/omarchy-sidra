@@ -122,6 +122,12 @@ BarWidget {
     onTriggered: root.actionMessage = ""
   }
 
+  FrameAnimation {
+    running: root.popupOpen && root.player && root.player.isPlaying
+      && root.player.positionSupported
+    onTriggered: root.player.positionChanged()
+  }
+
   implicitWidth: iconButton.implicitWidth
   implicitHeight: iconButton.implicitHeight
 
