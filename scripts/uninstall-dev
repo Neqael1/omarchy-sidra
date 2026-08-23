@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+plugin_id="sidra.controls"
+plugin_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/$plugin_id"
+
+if [[ -L "$plugin_dir" ]]; then
+  unlink -- "$plugin_dir"
+  omarchy-shell shell rescanPlugins
+  printf 'Removed development link: %s\n' "$plugin_dir"
+else
+  printf 'No development link found at %s\n' "$plugin_dir"
+fi

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "sidra.controls",
+  "name": "Sidra Controls",
+  "version": "0.1.0",
+  "author": "Omarchy Sidra contributors",
+  "description": "Sidra-specific now-playing and playback controls for Omarchy 4",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Sidra",
+    "description": "Now-playing and MPRIS controls for Sidra",
+    "category": "Media",
+    "allowMultiple": false
+  }
+}

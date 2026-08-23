@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+plugin_id="sidra.controls"
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+plugin_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/$plugin_id"
+
+mkdir -p -- "$(dirname -- "$plugin_dir")"
+
+if [[ -e "$plugin_dir" && ! -L "$plugin_dir" ]]; then
+  printf 'Refusing to replace existing directory: %s\n' "$plugin_dir" >&2
+  exit 1
+fi
+
+ln -sfn -- "$project_dir" "$plugin_dir"
+omarchy-shell shell rescanPlugins
+
+for _attempt in {1..30}; do
+  if omarchy plugin list --json | grep -Fq '"id":"sidra.controls"'; then
+    break
+  fi
+  sleep 0.1
+done
+
+if ! omarchy plugin list --json | grep -Fq '"id":"sidra.controls"'; then
+  printf 'Plugin was not discovered after rescan: %s\n' "$plugin_id" >&2
+  exit 1
+fi
+
+omarchy plugin enable "$plugin_id"
+omarchy restart shell
+printf 'Installed development link: %s -> %s\n' "$plugin_dir" "$project_dir"
