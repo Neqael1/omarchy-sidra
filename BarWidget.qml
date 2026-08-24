@@ -22,8 +22,18 @@ BarWidget {
   readonly property string iconMode: String(setting("iconMode", "auto"))
   readonly property bool useArtworkIcon: artwork !== ""
     && ((iconMode === "auto" && player && player.isPlaying) || iconMode === "artwork")
+  readonly property bool useEqualizerIcon: iconMode === "equalizer" && player && player.isPlaying
+  readonly property bool rateSupported: player && player.minRate > 0 && player.maxRate > 0
+    && player.maxRate > player.minRate
   property bool popupOpen: false
   property string actionMessage: ""
+  property bool musicPickerOpen: false
+  property bool searchBusy: false
+  property string searchStatus: ""
+  property int searchGeneration: 0
+  property string pendingMusicUrl: ""
+  property string pendingMusicName: ""
+  property int pendingOpenAttempts: 0
 
   function findSidraPlayer() {
     for (var i = 0; i < players.length; i++) {
@@ -72,6 +82,12 @@ BarWidget {
     if (player && player.volumeSupported) player.volume = Math.max(0, Math.min(1, value))
   }
 
+  function adjustVolume(delta) {
+    if (!player || !player.volumeSupported) return
+    setVolume(player.volume + delta)
+    notifyAction("Volume " + Math.round(player.volume * 100) + "%")
+  }
+
   function toggleMute() {
     if (!player || !player.volumeSupported) return
     if (player.volume > 0.001) {
@@ -88,6 +104,20 @@ BarWidget {
 
   function toggleShuffle() {
     if (player && player.shuffleSupported) player.shuffle = !player.shuffle
+  }
+
+  function cycleRate() {
+    if (!rateSupported) return
+    var rates = [0.5, 0.75, 1, 1.25, 1.5, 2]
+    var current = Number(player.rate) || 1
+    var next = rates[0]
+    for (var i = 0; i < rates.length; i++) {
+      if (rates[i] > current + 0.01) { next = rates[i]; break }
+    }
+    next = Math.max(player.minRate, Math.min(player.maxRate, next))
+    if (Math.abs(next - current) < 0.01) next = Math.max(player.minRate, Math.min(player.maxRate, 1))
+    player.rate = next
+    notifyAction("Playback speed " + next + "×")
   }
 
   function repeatLabel() {
@@ -114,6 +144,68 @@ BarWidget {
     if (trackUrl) Quickshell.execDetached(["xdg-open", trackUrl])
   }
 
+  function searchMusic(query) {
+    var term = String(query || "").trim()
+    var generation = ++searchGeneration
+    searchResults.clear()
+    if (term.length < 2) {
+      searchBusy = false
+      searchStatus = term.length ? "Type at least two characters" : ""
+      return
+    }
+
+    searchBusy = true
+    searchStatus = "Searching Apple Music…"
+    var request = new XMLHttpRequest()
+    var country = String(setting("storefront", "AU")).toUpperCase()
+    request.open("GET", "https://itunes.apple.com/search?media=music&entity=song&limit=8&country="
+      + encodeURIComponent(country) + "&term=" + encodeURIComponent(term))
+    request.onreadystatechange = function() {
+      if (request.readyState !== XMLHttpRequest.DONE) return
+      if (generation !== root.searchGeneration) return
+      searchBusy = false
+      if (request.status < 200 || request.status >= 300) {
+        searchStatus = "Music search is unavailable"
+        return
+      }
+      try {
+        var response = JSON.parse(request.responseText)
+        var results = response.results || []
+        for (var i = 0; i < results.length; i++) {
+          var item = results[i]
+          if (!item.trackViewUrl) continue
+          searchResults.append({
+            trackName: String(item.trackName || "Unknown track"),
+            artistName: String(item.artistName || ""),
+            collectionName: String(item.collectionName || ""),
+            artworkUrl: String(item.artworkUrl100 || "").replace("100x100", "200x200"),
+            musicUrl: String(item.trackViewUrl)
+          })
+        }
+        searchStatus = searchResults.count ? "" : "No songs found"
+      } catch (error) {
+        searchStatus = "Could not read music search results"
+      }
+    }
+    request.send()
+  }
+
+  function playSearchResult(url, name) {
+    if (!url) return
+    if (player) {
+      player.openUri(url)
+      notifyAction("Opening “" + name + "” in Sidra…")
+      musicPickerOpen = false
+    } else {
+      pendingMusicUrl = url
+      pendingMusicName = name
+      pendingOpenAttempts = 0
+      launch()
+      pendingOpenTimer.start()
+      notifyAction("Launching Sidra…")
+    }
+  }
+
   property real previousVolume: 0.5
 
   Timer {
@@ -121,6 +213,34 @@ BarWidget {
     interval: 1800
     onTriggered: root.actionMessage = ""
   }
+
+  Timer {
+    id: searchDebounce
+    interval: 450
+    onTriggered: root.searchMusic(musicSearchField.text)
+  }
+
+  Timer {
+    id: pendingOpenTimer
+    interval: 250
+    repeat: true
+    onTriggered: {
+      root.pendingOpenAttempts++
+      if (root.player) {
+        root.player.openUri(root.pendingMusicUrl)
+        root.notifyAction("Opening “" + root.pendingMusicName + "” in Sidra…")
+        root.musicPickerOpen = false
+        root.pendingMusicUrl = ""
+        stop()
+      } else if (root.pendingOpenAttempts >= 40) {
+        root.notifyAction("Sidra did not become available")
+        root.pendingMusicUrl = ""
+        stop()
+      }
+    }
+  }
+
+  ListModel { id: searchResults }
 
   FrameAnimation {
     running: root.popupOpen && root.player && root.player.isPlaying
@@ -135,17 +255,53 @@ BarWidget {
     id: iconButton
     anchors.fill: parent
     bar: root.bar
-    text: root.useArtworkIcon ? ""
+    text: root.useArtworkIcon || root.useEqualizerIcon ? ""
       : root.iconMode === "playback" ? (root.player && root.player.isPlaying ? "󰏤" : "󰐊")
       : "󰎆"
-    labelVisible: !root.useArtworkIcon
+    labelVisible: !root.useArtworkIcon && !root.useEqualizerIcon
     hasVisualContent: true
     active: root.player && root.player.isPlaying
     dimmed: !root.player
     tooltipText: root.player
       ? root.title + (root.artist ? " — " + root.artist : "")
       : "Sidra"
-    onPressed: root.popupOpen = !root.popupOpen
+    onPressed: function(button) {
+      if (button === Qt.MiddleButton) root.playPause()
+      else if (button === Qt.RightButton) root.next()
+      else root.popupOpen = !root.popupOpen
+    }
+
+    Item {
+      anchors.centerIn: parent
+      width: Style.space(16)
+      height: Style.space(13)
+      visible: root.useEqualizerIcon
+
+      Row {
+        anchors.bottom: parent.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: Style.space(2)
+
+        Repeater {
+          model: [0.35, 0.8, 0.55, 1]
+          Rectangle {
+            required property real modelData
+            width: Style.space(2)
+            height: parent.parent.height * modelData
+            anchors.bottom: parent.bottom
+            radius: width / 2
+            color: root.bar ? root.bar.barForeground : Color.foreground
+
+            SequentialAnimation on height {
+              running: root.useEqualizerIcon
+              loops: Animation.Infinite
+              NumberAnimation { to: Style.space(3); duration: 220 + index * 35; easing.type: Easing.InOutQuad }
+              NumberAnimation { to: Style.space(12); duration: 300 + index * 25; easing.type: Easing.InOutQuad }
+            }
+          }
+        }
+      }
+    }
 
     Image {
       id: barArtwork
@@ -165,6 +321,14 @@ BarWidget {
       font.family: root.bar ? root.bar.fontFamily : Style.font.family
       font.pixelSize: Style.font.icon
       visible: root.useArtworkIcon && barArtwork.status !== Image.Ready
+    }
+
+    WheelHandler {
+      target: iconButton
+      onWheel: function(event) {
+        if (event.angleDelta.y > 0) root.adjustVolume(0.05)
+        else if (event.angleDelta.y < 0) root.adjustVolume(-0.05)
+      }
     }
   }
 
@@ -192,6 +356,8 @@ BarWidget {
         else if (event.key === Qt.Key_Down) root.setVolume((root.player ? root.player.volume : 0) - 0.05)
         else if (event.key === Qt.Key_N) root.next()
         else if (event.key === Qt.Key_P) root.previous()
+        else if (event.key === Qt.Key_M) root.toggleMute()
+        else if (event.key === Qt.Key_S) root.cycleRate()
         else return
         event.accepted = true
       }
@@ -271,6 +437,123 @@ BarWidget {
             font.pixelSize: Style.font.caption
             elide: Text.ElideRight
             visible: text !== ""
+          }
+        }
+      }
+
+
+      Column {
+        width: parent.width
+        spacing: Style.space(8)
+
+        Button {
+          width: parent.width
+          iconText: "󰍉"
+          text: root.musicPickerOpen ? "Hide music picker" : "Pick music"
+          foreground: root.popupForeground
+          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+          onClicked: {
+            root.musicPickerOpen = !root.musicPickerOpen
+            if (root.musicPickerOpen) Qt.callLater(function() { musicSearchField.forceActiveFocus() })
+          }
+        }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(6)
+          visible: root.musicPickerOpen
+
+          TextField {
+            id: musicSearchField
+            width: parent.width
+            placeholderText: "Search songs, artists, or albums"
+            foreground: root.popupForeground
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            onTextChanged: searchDebounce.restart()
+            onAccepted: root.searchMusic(text)
+          }
+
+          Text {
+            width: parent.width
+            text: root.searchStatus
+            visible: text !== ""
+            color: root.popupForeground
+            opacity: 0.6
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: Style.font.caption
+            horizontalAlignment: Text.AlignHCenter
+          }
+
+          ListView {
+            id: musicResults
+            width: parent.width
+            height: searchResults.count ? Math.min(contentHeight, Style.space(224)) : 0
+            clip: true
+            spacing: Style.space(4)
+            model: searchResults
+
+            delegate: BorderSurface {
+              required property string trackName
+              required property string artistName
+              required property string collectionName
+              required property string artworkUrl
+              required property string musicUrl
+
+              width: musicResults.width
+              height: Style.space(52)
+              radius: Style.cornerRadius
+              color: resultMouse.containsMouse
+                ? Style.hoverFillFor(root.popupForeground, Color.accent) : "transparent"
+              borderSpec: Border.controlSpec(resultMouse.containsMouse ? "hover-cursor" : "normal",
+                root.popupForeground, Color.accent)
+
+              Row {
+                anchors.fill: parent
+                anchors.margins: Style.space(5)
+                spacing: Style.space(8)
+
+                Image {
+                  width: parent.height
+                  height: parent.height
+                  source: artworkUrl
+                  asynchronous: true
+                  fillMode: Image.PreserveAspectCrop
+                }
+
+                Column {
+                  width: parent.width - parent.height - Style.space(8)
+                  anchors.verticalCenter: parent.verticalCenter
+
+                  Text {
+                    width: parent.width
+                    text: trackName
+                    color: root.popupForeground
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                    elide: Text.ElideRight
+                  }
+
+                  Text {
+                    width: parent.width
+                    text: artistName + (collectionName ? " · " + collectionName : "")
+                    color: root.popupForeground
+                    opacity: 0.6
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.caption
+                    elide: Text.ElideRight
+                  }
+                }
+              }
+
+              MouseArea {
+                id: resultMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.playSearchResult(musicUrl, trackName)
+              }
+            }
           }
         }
       }
@@ -435,6 +718,17 @@ BarWidget {
         spacing: Style.space(6)
 
         Button {
+          text: root.player ? Number(root.player.rate || 1).toFixed(2).replace(/0+$/, "").replace(/\.$/, "") + "×" : "1×"
+          foreground: root.popupForeground
+          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+          enabled: root.rateSupported
+          selected: root.player && Math.abs(Number(root.player.rate) - 1) > 0.01
+          opacity: enabled ? 1 : 0.35
+          tooltipText: "Cycle playback speed"
+          onClicked: root.cycleRate()
+        }
+
+        Button {
           iconText: "󰍹"
           text: "Open Sidra"
           foreground: root.popupForeground
@@ -478,7 +772,7 @@ BarWidget {
         text: root.actionMessage !== "" ? root.actionMessage
           : !root.player ? "Sidra is not running — press Space to launch"
           : root.player.trackTitle === "" ? "Waiting for track information…"
-          : "Space play/pause · ←/→ seek · ↑/↓ volume · N/P tracks"
+          : "Space play/pause · ←/→ seek · ↑/↓ volume · N/P tracks · M mute · S speed"
         color: root.popupForeground
         opacity: root.actionMessage !== "" ? 0.9 : 0.5
         font.family: root.bar ? root.bar.fontFamily : Style.font.family

@@ -15,7 +15,11 @@ not take control of unrelated browsers or media players.
 - Click the artwork to focus or launch Sidra.
 - Mute, open or copy the Apple Music track link, and stop playback.
 - Use keyboard shortcuts while the popover is focused.
-- Choose a music, playback-state, or album-art bar icon.
+- Use Omaramp-style bar gestures: middle-click to play/pause, right-click to
+  skip, and scroll to adjust volume.
+- Cycle supported playback speeds from 0.5× to 2×.
+- Search Apple Music by song, artist, or album and open a selection in Sidra.
+- Choose a music, playback-state, animated equalizer, or album-art bar icon.
 - Launch Sidra from the popover when it is not running.
 - Support horizontal and vertical Omarchy bars.
 - Follow the active Omarchy popup palette, typography, spacing, borders, and scale.
@@ -32,12 +36,24 @@ Set `iconMode` on the widget's entry in `~/.config/omarchy/shell.json`:
 ```
 
 Supported values are `auto` (default: artwork while playing, music icon
-otherwise), `music`, `playback`, and `artwork`.
+otherwise), `music`, `playback`, `equalizer`, and `artwork`.
 
 ## Keyboard controls
 
 With the popover focused, use Space for play/pause, left/right to seek five
-seconds, up/down to change volume, N/P for next/previous, and Escape to close.
+seconds, up/down to change volume, N/P for next/previous, M to mute, S to cycle
+playback speed, and Escape to close.
+
+On the bar icon, middle-click toggles playback, right-click skips to the next
+track, and the mouse wheel changes Sidra's volume.
+
+## Music picker
+
+Choose **Pick music** in the popover and search for a song, artist, or album.
+Selecting a result sends its Apple Music URL to Sidra through MPRIS. Search
+uses Apple's public iTunes Search API and defaults to the Australian storefront.
+Set `storefront` beside `iconMode` in `shell.json` to use another two-letter
+country code.
 
 ## Install for development
 
