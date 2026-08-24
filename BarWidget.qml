@@ -285,6 +285,7 @@ BarWidget {
         Repeater {
           model: [0.35, 0.8, 0.55, 1]
           Rectangle {
+            required property int index
             required property real modelData
             width: Style.space(2)
             height: parent.parent.height * modelData
