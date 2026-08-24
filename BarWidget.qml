@@ -348,7 +348,17 @@ BarWidget {
       spacing: Style.space(14)
       focus: root.popupOpen
 
+      Keys.priority: Keys.AfterItem
       Keys.onPressed: function(event) {
+        if (musicSearchField.activeFocus) {
+          if (event.key === Qt.Key_Escape) {
+            musicSearchField.focus = false
+            root.musicPickerOpen = false
+            content.forceActiveFocus()
+            event.accepted = true
+          }
+          return
+        }
         if (event.key === Qt.Key_Escape) root.close()
         else if (event.key === Qt.Key_Space) root.playPause()
         else if (event.key === Qt.Key_Left) root.seekBy(-5)
@@ -472,6 +482,12 @@ BarWidget {
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             onTextChanged: searchDebounce.restart()
             onAccepted: root.searchMusic(text)
+            Keys.onEscapePressed: function(event) {
+              focus = false
+              root.musicPickerOpen = false
+              content.forceActiveFocus()
+              event.accepted = true
+            }
           }
 
           Text {

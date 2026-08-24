@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "sidra.controls",
   "name": "Sidra Controls",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "author": "Omarchy Sidra contributors",
   "description": "Sidra-specific now-playing and playback controls for Omarchy 4",
   "kinds": [
